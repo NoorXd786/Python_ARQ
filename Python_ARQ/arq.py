@@ -11,9 +11,7 @@ from pyrogram.types import Message, User
 
 # https://stackoverflow.com/a/55766564/13673785
 def _format_url(url):
-    if not match("(?:http|https)://", url):
-        return "https://{}".format(url)
-    return url
+    return url if match("(?:http|https)://", url) else f"https://{url}"
 
 
 def _get_name(from_user: User) -> str:
@@ -291,10 +289,11 @@ class Arq:
 
                         results.data | results.data.drawings | results.data.hentai | .neutral | .sexy | .porn | .is_nsfw
         """
-        if not file and not url:
-            raise Exception("PROVIDE FILE OR URL")
         if not file:
-            return await self._fetch("nsfw_scan", url=url)
+            if url:
+                return await self._fetch("nsfw_scan", url=url)
+            else:
+                raise Exception("PROVIDE FILE OR URL")
         async with aiofiles.open(file, mode="rb") as f:
             file = await f.read()
         return await self._post_data("nsfw_scan", data={"file": file})
@@ -370,27 +369,8 @@ class Arq:
                     else message.from_user.id,
                     "avatar": True,
                     "from": {
-                        "id": message.from_user.id,
-                        "username": message.from_user.username
-                        if message.from_user.username
-                        else "",
-                        "photo": {
-                            "small_file_id": message.from_user.photo.small_file_id,
-                            "small_photo_unique_id": message.from_user.photo.small_photo_unique_id,
-                            "big_file_id": message.from_user.photo.big_file_id,
-                            "big_photo_unique_id": message.from_user.photo.big_photo_unique_id,
-                        }
-                        if message.from_user.photo
-                        else "",
-                        "type": message.chat.type,
-                        "name": _get_name(message.from_user),
-                    }
-                    if not message.forward_from
-                    else {
                         "id": message.forward_from.id,
-                        "username": message.forward_from.username
-                        if message.forward_from.username
-                        else "",
+                        "username": message.forward_from.username or "",
                         "photo": {
                             "small_file_id": message.forward_from.photo.small_file_id,
                             "small_photo_unique_id": message.forward_from.photo.small_photo_unique_id,
@@ -401,13 +381,26 @@ class Arq:
                         else "",
                         "type": message.chat.type,
                         "name": _get_name(message.forward_from),
+                    }
+                    if message.forward_from
+                    else {
+                        "id": message.from_user.id,
+                        "username": message.from_user.username or "",
+                        "photo": {
+                            "small_file_id": message.from_user.photo.small_file_id,
+                            "small_photo_unique_id": message.from_user.photo.small_photo_unique_id,
+                            "big_file_id": message.from_user.photo.big_file_id,
+                            "big_photo_unique_id": message.from_user.photo.big_photo_unique_id,
+                        }
+                        if message.from_user.photo
+                        else "",
+                        "type": message.chat.type,
+                        "name": _get_name(message.from_user),
                     },
-                    "text": message.text if message.text else "",
+                    "text": message.text or "",
                     "replyMessage": (
                         {
-                            "name": _get_name(
-                                message.reply_to_message.from_user
-                            ),
+                            "name": _get_name(message.reply_to_message.from_user),
                             "text": message.reply_to_message.text,
                             "chatId": message.reply_to_message.from_user.id,
                         }
@@ -420,6 +413,7 @@ class Arq:
                 for message in messages
             ],
         }
+
         response = await self._post("quotly", params={"payload": str(payload)})
         if response.ok:
             response.result = b64decode(
